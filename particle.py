@@ -1,4 +1,5 @@
-import np as np
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 
@@ -23,9 +24,10 @@ class force:
 
 class clump:
     
-    def __init__(self, size: int = 10, shape: str = 'circle', radius = 50, initial_peturbation: force = None, peturbation: force = None):
+    def __init__(self, size: int = 10, shape: str = 'circle', radius = 50, insertDistance = 10, initial_peturbation: force = None, peturbation: force = None):
         
         self.particles = []
+        self.insertDistance = insertDistance
         self.place_particles(size, shape, radius)
         pass
     
@@ -35,19 +37,80 @@ class clump:
         locations = np.linspace(0,2*3.14159,size)
         
         for i in range(size):
-            self.particles.add(
+            self.particles.append(
                 particle(
                     initialX= radius*np.cos(locations[i]),
                     initialY= radius*np.sin(locations[i])
                 )
             )
-            
-            
     
+    def update(self):
+        
+        # calculate all force vectors
+        
+        for i in range(len(self.particles)):
+            pass
+            # calculate respulsive force
+            # repulsive force will be calculated against ALL particles
+            
+            
+            # calculate attractive force
+            # attractive force will only be calculated on two nearest list neighbors
+            
+            
+            # calculate peturbation
+            
+        
+        # update positions based on force
+        
+        
+        # insert
+        
+        
+        
+        
+        
+        pass
+    
+    def insert(self):
+        
+        i = 0
+        
+        while i < len(self.particles):
+            
+            # if evaluating i = 1, and requires insert, inserted at i = 2. Next loop iterates with i = 2 against i = 3 which was
+            # previous i =2 particle. No particles are skipped.
+            
+        
+            diff = np.array(self.particles[i+1]) - np.array(self.particles[i])
+            mag = np.linalg.norm(diff)
+            
+            if mag > self.insertDistance:
+                
+                newParticle = self.particles[i]
+        
+            
+            # if l2 norm of difference between vectors higher than threshold add particle
+            pass
+            
+            
     def initial_peturbation(self):
         pass
     
     def peturbation_function(self):
         pass
+    
+    def draw(self):
+        
+        for particle in self.particles:
+            plt.plot(particle.positionVec[0],particle.positionVec[1], marker='o')
+        
+        plt.show()
+        
+
+if __name__ == "__main__":
+    
+    cl = clump()
+    cl.draw()
 
 
