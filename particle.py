@@ -18,14 +18,15 @@ class force:
     
     def __init__(self):
         self.repulsionDistance = 25
-        self.attractionDistance = 10
+        self.attractionDistance = 60
         self.springConstant = 1
         
-    def calc_force(self, vector1: np.array, vector2: np.array) -> np.array:
+    def calc_force_vector(self, difference: np.array) -> np.array:
         
-        difference = vector2-vector1
         norm = np.linalg.norm(difference,ord=2)
         
+        if norm == 0:
+            return np.array([0,0,0])
         # are the particles close enough to repluse?
         if norm < self.repulsionDistance:
                 
@@ -40,7 +41,28 @@ class force:
             
         return forceVector
 
+    def calc_force_scalar(self, norm):
+        
+        if norm == 0:
+            return 0
+        force = (self.springConstant/(norm*norm)) 
+        
+        return -force
+        # if norm == 0:
+        #     return 0
+        # # are the particles close enough to repluse?
+        # if norm < self.repulsionDistance:
                 
+        #     # equation for force (similar to many forces like gravity/electromagnetic, has fall-off with r^2 and a constant multiplier)
+        #     force = (-self.springConstant/(norm*norm)) 
+        #     return force
+            
+        # elif norm > self.attractionDistance:
+        #     return 0
+        # else:
+        #     return 0
+            
+             
 class particle:
     
     def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.5):
@@ -57,6 +79,40 @@ class particle:
         
         totalForceVector = np.array([0,0,0])
         
+        particlesPositions = []
+        particlesPositions.append([particle.positionVec for particle in particles])
+        particlesPositions = np.array(particlesPositions)
+        
+        particlesVectors = particlesPositions - self.positionVec
+        log.debug(particlesVectors)
+        particlesNorm = np.sum(particlesVectors**2,2)
+        log.debug(particlesNorm)
+        
+        repulsedParticles = particlesNorm < _force.repulsionDistance**2
+        repulsedParticles = particlesNorm != 0
+
+        repulsedParticlesVectors = particlesVectors[repulsedParticles]
+        
+        log.debug(f"repulsed particles vectors {repulsedParticlesVectors}")
+   
+        repulsedParticlesMag = np.sqrt(np.sum(repulsedParticlesVectors**2,1))
+        repulsedParticlesUnitVectors = repulsedParticlesVectors/repulsedParticlesMag[:,np.newaxis]
+        log.debug(f"repulsed unit vectors are {repulsedParticlesUnitVectors}")
+        repulsedParticlesForces = repulsedParticlesUnitVectors * np.array(list(map(_force.calc_force_scalar,repulsedParticlesMag)))[:,np.newaxis]
+        log.debug(f"forces are {repulsedParticlesForces}")
+        repulsedParticlesTotalForce = sum(repulsedParticlesForces)
+        log.debug(f"total force is {repulsedParticlesTotalForce}")
+        self.velocityVec = self.velocityVec + (repulsedParticlesTotalForce/self.mass)
+        log.debug(f"velocity is {self.velocityVec}")
+        # for difference in repulsedParticlesVectors:
+        #     forceVector = _force.calc_force(difference)
+        #     print(f"force vector is {forceVector}")
+        #     totalForceVector = totalForceVector + forceVector
+            
+        # self.velocityVec = self.velocityVec + (totalForceVector/self.mass)
+        
+        return
+    
         for particle in particles:
             # dont calculate the force on yourself
             if self != particle:
@@ -78,7 +134,7 @@ class particle:
 
 class clump:
     
-    def __init__(self, size: int = 8, radius = 10, insertDistance = 5, force_func: force = None, initial_peturbation: force = None, peturbation: force = None):
+    def __init__(self, size: int = 15, radius = 20, insertDistance = 5, force_func: force = None, initial_peturbation: force = None, peturbation: force = None):
         
         self.particles = []
         self.insertDistance = insertDistance
@@ -118,7 +174,6 @@ class clump:
             log.debug(f"updating velocity on particle {i}")
             
             # this will calculate repuslive force
-            # FIND A BETTER DATA STRUCTURE FOR PARTICLES SUCH THAT WE CAN ONLY CALCULATE REPULSION ON CLOSEST NEIGHBORS
             self.particles[i].update_velocity(self.particles,self.force_func)
             
             # this will calculate attractive force
@@ -212,6 +267,6 @@ if __name__ == "__main__":
     log.setLevel(logging.INFO)
     
     cl = clump()
-    cl.run_sim(iterations=30)
+    cl.run_sim(iterations=35)
 
 
