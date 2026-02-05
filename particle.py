@@ -72,20 +72,20 @@ class particle:
         self.mass = mass
         self.friction = friction
         
-    def update_velocity(self, particles: list[Self], _force: force = None):
+    
+    def update_velocity(self, particles: np.array, _force: force = None):
         
         start = time.perf_counter()
         log.debug("calculating forces on particle...")
+        log.debug(f"particles compared against {particles}")
+        
         
         totalForceVector = np.array([0,0,0])
         
-        particlesPositions = []
-        particlesPositions.append([particle.positionVec for particle in particles])
-        particlesPositions = np.array(particlesPositions)
-        
-        particlesVectors = particlesPositions - self.positionVec
-        log.debug(particlesVectors)
-        particlesNorm = np.sum(particlesVectors**2,2)
+      
+        particlesVectors = particles - self.positionVec
+        log.debug(f"particle vector {particlesVectors}")
+        particlesNorm = np.sum(particlesVectors**2,1)
         log.debug(particlesNorm)
         
         repulsedParticles = particlesNorm < _force.repulsionDistance**2
@@ -104,28 +104,6 @@ class particle:
         log.debug(f"total force is {repulsedParticlesTotalForce}")
         self.velocityVec = self.velocityVec + (repulsedParticlesTotalForce/self.mass)
         log.debug(f"velocity is {self.velocityVec}")
-        # for difference in repulsedParticlesVectors:
-        #     forceVector = _force.calc_force(difference)
-        #     print(f"force vector is {forceVector}")
-        #     totalForceVector = totalForceVector + forceVector
-            
-        # self.velocityVec = self.velocityVec + (totalForceVector/self.mass)
-        
-        return
-    
-        for particle in particles:
-            # dont calculate the force on yourself
-            if self != particle:
-                
-                forceVector = _force.calc_force(self.positionVec,particle.positionVec)
-                
-                log.debug(f"current particle {self.positionVec}")
-                log.debug(f"next partice {particle.positionVec}")
-                
-                totalForceVector = totalForceVector + forceVector
-        
-        # we divide force by mass to get acceleration, which is then added to velocity
-        self.velocityVec = self.velocityVec + (totalForceVector/self.mass)
         log.debug(f"done calculating in {time.perf_counter()-start:.4f}")
         
     def update_position(self):
@@ -134,7 +112,7 @@ class particle:
 
 class clump:
     
-    def __init__(self, size: int = 15, radius = 20, insertDistance = 5, force_func: force = None, initial_peturbation: force = None, peturbation: force = None):
+    def __init__(self, size: int = 8, radius = 20, insertDistance = 5, force_func: force = None, initial_peturbation: force = None, peturbation: force = None):
         
         self.particles = []
         self.insertDistance = insertDistance
@@ -173,8 +151,26 @@ class clump:
             
             log.debug(f"updating velocity on particle {i}")
             
+            # create an array of particle position vectors
+            particlesPositions = []
+            particlesPositions.append([particle.positionVec for particle in self.particles])
+            particlesPositions = np.array(particlesPositions[0])
+            # print(particlesPositions)
+            
+            # if we calculate the norm, we can check boundaries and apply the correct forces
+            particlesVectors = particlesPositions - self.particles[i].positionVec
+            particlesNorm = np.sum(particlesVectors**2,1)
+            
+            # create a vector with only repulsed particles and update
+            repulsedParticles = particlesNorm < self.force_func.repulsionDistance**2
+            repulsedParticles = particlesNorm != 0
+            
+            # print(repulsedParticles)
+            self.particles[i].update_velocity(particlesPositions[repulsedParticles],self.force_func)
+            
+            # create a vector with only attacted particles
             # this will calculate repuslive force
-            self.particles[i].update_velocity(self.particles,self.force_func)
+           
             
             # this will calculate attractive force
             
@@ -264,9 +260,9 @@ class clump:
 
 if __name__ == "__main__":
     
-    log.setLevel(logging.INFO)
+    log.setLevel(logging.WARNING)
     
     cl = clump()
-    cl.run_sim(iterations=35)
+    cl.run_sim(iterations=30)
 
 
