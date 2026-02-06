@@ -70,7 +70,7 @@ class perturbation():
         
         if random.random() < self.prob:
             amount = random.random()
-            return vector + amount*self.magnitude
+            return vector + np.array([1,1,0])*amount*self.magnitude
         else:
             return vector
         
@@ -83,8 +83,9 @@ class particle:
         self.velocityVec = np.array([0,0,0])
         self.mass = mass
         self.friction = friction
+        self.life = 50
         
-    def update_velocity(self, particlesVectors: np.array, _force: force.calc_force = force()):
+    def update_velocity(self, particlesVectors: np.array, _force: force.calc_force):
         
         start = time.perf_counter()
         log.debug("calculating forces on particle...")
@@ -108,14 +109,21 @@ class particle:
         log.debug(f"velocity is {self.velocityVec}")
         log.debug(f"done calculating in {time.perf_counter()-start:.4f}")
         
-    def update_position(self):
-        self.positionVec = self.positionVec + self.velocityVec
-        self.velocityVec = self.velocityVec*self.friction
+    def update_position(self, incrementZ = False):
         
+        if self.life > 0:
+            self.positionVec = self.positionVec + self.velocityVec
+            self.velocityVec = self.velocityVec*self.friction
+            self.life = self.life - 1
+        
+        print(incrementZ)
+        if incrementZ:
+            self.positionVec = self.positionVec + np.array([0,0,1])
+            
 
 class clump:
     
-    def __init__(self, size: int = 10, radius = 40, insertDistance = 15, _force: force = None, _perturbation: force = None):
+    def __init__(self, size: int = 10, radius = 40, insertDistance = 15, _force: force = force(), _perturbation: force = None):
         
         self.particles = []
         self.insertDistance = insertDistance
@@ -201,7 +209,7 @@ class clump:
     
         return self.particles[i]
     
-    def update(self):
+    def update(self, incrementZ = False):
         
         start  = time.perf_counter()
         
@@ -215,7 +223,7 @@ class clump:
         
         
         for particle in self.particles:
-            particle.update_position()
+            particle.update_position(incrementZ = incrementZ)
         log.info("updated particle positions...")
         
         log.info("inserting new nodes...")
@@ -264,11 +272,11 @@ class clump:
         log.info(f"total runtime {time.perf_counter()-start}")
         log.info(f"avg time per iteration {(time.perf_counter()-start)/iterations}")
     
-    def run_sim_iteration(self):
+    def run_sim_iteration(self, incrementZ = False):
         start = time.perf_counter()
         self.iterations = self.iterations + 1
         log.info(f'running iteration {self.iterations}')
-        self.update() 
+        self.update(incrementZ = incrementZ) 
         currentItTime = (time.perf_counter()-start)
         self.totalTime = self.totalTime + currentItTime
         log.info(f"total runtime {self.totalTime}")
