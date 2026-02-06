@@ -1,9 +1,11 @@
 import numpy as np
+# import matplotlib
+# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import time
 from typing import Self
 import logging
-
+import multiprocessing
 
 logging.basicConfig(
     # filename='app.log', 
@@ -93,9 +95,10 @@ class clump:
         self.insertDistance = insertDistance
         self.place_particles(size,radius)
         self.force_func = force()
+        self.iterations = 0
+        self.totalTime = 0
+  
         
-        plt.ion() # Turn on interactive mode
-        self.fig, self.ax = plt.subplots()
             
     def place_particles(self, size: int, radius: float):
         # basic version places particles in a circle only
@@ -115,6 +118,55 @@ class clump:
             )
             log.debug(f"placing particle @{self.particles[i].positionVec}")
     
+    def update_particle(self, particle_index):
+        
+        log.debug(f"updating velocity on particle {particle}")
+        
+        i = particle_index
+        # create an array of particle position vectors
+        particlesPositions = []
+        particlesPositions.append([particle.positionVec for particle in self.particles])
+        particlesPositions = np.array(particlesPositions[0])
+        # print(particlesPositions)
+        
+        # if we calculate the norm, we can check boundaries and apply the correct forces
+        particlesVectors = particlesPositions - self.particles[i].positionVec
+        particlesNorm = np.sum(particlesVectors**2,1)
+        
+        # these are the particles to be repulsed
+        repulsedParticles = (particlesNorm < (self.force_func.repulsionDistance**2)) 
+        selfParticle = particlesNorm != 0
+        
+        allParticles = repulsedParticles & selfParticle
+        log.debug(f"all repulsed particles {repulsedParticles}")
+        log.debug(f"particles that arent self {selfParticle}")
+        log.debug(f"combined set: {allParticles}")
+        # this will calculate repuslive force
+        self.particles[i].update_velocity(particlesVectors[allParticles],self.force_func.calc_force_repulse)
+        
+        # these are the particles to be attracted
+        # notRepulsedParticles = particlesNorm > self.force_func.repulsionDistance**2
+        # attractedParticles = particlesNorm < self.force_func.attractionDistance**2
+        # selfParticle = particlesNorm != 0
+        # allParticles = notRepulsedParticles & attractedParticles & selfParticle
+        # log.debug(f"all not repulsed particles {notRepulsedParticles}")
+        # log.debug(f"particles that are in attraction range {attractedParticles}")
+        # log.debug(f"particles that arent self {selfParticle}")
+        # log.debug(f"combined set: {allParticles}")
+        # # this will calculate attractive force
+        # self.particles[i].update_velocity(particlesVectors[allParticles],self.force_func.calc_force_attract)
+        
+        # only attract particles on left and right of current
+        attractedParticles = np.array([self.particles[i-1].positionVec,self.particles[(i+1)%len(self.particles)].positionVec])
+        attractedParticlesVectors = attractedParticles - self.particles[i].positionVec
+        log.debug(f"attracted particles {attractedParticles}")
+        self.particles[i].update_velocity(attractedParticlesVectors,self.force_func.calc_force_attract)
+        # this will calculate peturbation force
+        
+    
+    
+        return self.particles[i]
+    
     def update(self):
         
         start  = time.perf_counter()
@@ -125,50 +177,16 @@ class clump:
         
         # since each particle is calculated in isolation (they are all updated at once) 
         # we might actually be able to make this multi-threaded/processed to increase speeds
-        for i in range(len(self.particles)):
-            
-            log.debug(f"updating velocity on particle {i}")
-            
-            # create an array of particle position vectors
-            particlesPositions = []
-            particlesPositions.append([particle.positionVec for particle in self.particles])
-            particlesPositions = np.array(particlesPositions[0])
-            # print(particlesPositions)
-            
-            # if we calculate the norm, we can check boundaries and apply the correct forces
-            particlesVectors = particlesPositions - self.particles[i].positionVec
-            particlesNorm = np.sum(particlesVectors**2,1)
-            
-            # these are the particles to be repulsed
-            repulsedParticles = (particlesNorm < (self.force_func.repulsionDistance**2)) 
-            selfParticle = particlesNorm != 0
-            
-            allParticles = repulsedParticles & selfParticle
-            log.debug(f"all repulsed particles {repulsedParticles}")
-            log.debug(f"particles that arent self {selfParticle}")
-            log.debug(f"combined set: {allParticles}")
-            # this will calculate repuslive force
-            self.particles[i].update_velocity(particlesVectors[allParticles],self.force_func.calc_force_repulse)
-            
-            # these are the particles to be attracted
-            # notRepulsedParticles = particlesNorm > self.force_func.repulsionDistance**2
-            # attractedParticles = particlesNorm < self.force_func.attractionDistance**2
-            # selfParticle = particlesNorm != 0
-            # allParticles = notRepulsedParticles & attractedParticles & selfParticle
-            # log.debug(f"all not repulsed particles {notRepulsedParticles}")
-            # log.debug(f"particles that are in attraction range {attractedParticles}")
-            # log.debug(f"particles that arent self {selfParticle}")
-            # log.debug(f"combined set: {allParticles}")
-            # # this will calculate attractive force
-            # self.particles[i].update_velocity(particlesVectors[allParticles],self.force_func.calc_force_attract)
-            
-            # only attract particles on left and right of current
-            attractedParticles = np.array([self.particles[i-1].positionVec,self.particles[(i+1)%len(self.particles)].positionVec])
-            attractedParticlesVectors = attractedParticles - self.particles[i].positionVec
-            log.debug(f"attracted particles {attractedParticles}")
-            self.particles[i].update_velocity(attractedParticlesVectors,self.force_func.calc_force_attract)
-            # this will calculate peturbation force
-            
+        
+        # for i in range(len(self.particles)):
+        #     self.update_particle(i)
+        
+        # multiprocessed version
+        particlesIndex = list(range(0,len(self.particles),1))
+        with multiprocessing.Pool() as pool:
+            results = pool.map(self.update_particle,particlesIndex)
+       
+        self.particles = results   
         
         log.info("updating particle positions...")
         for particle in self.particles:
@@ -206,34 +224,11 @@ class clump:
                
                 i = i+1 
 
-    def initial_peturbation(self):
+    def initial_peturbation(self,particle):
         pass
     
     def peturbation_function(self):
-        pass
-    
-    def draw(self):
-        
-        # self.fig.clf()
-        self.ax.cla()
-        
-        # draw as particles
-        # for particle in self.particles:
-        #     self.ax.plot(particle.positionVec[0],particle.positionVec[1], marker='o', color = 'red')
-        
-        # draw as lines
-        positions =  [particle.positionVec for particle in self.particles]
-        # connect last point
-        positions.append(positions[0])
-        xPos = [position[0] for position in positions]
-        yPos = [position[1] for position in positions]
-        self.ax.plot(xPos,yPos, color = 'red')
-        self.ax.set_xlim(-500,500)
-        self.ax.set_ylim(-500,500)
-        
-        self.fig.canvas.draw()
-        # Process events and pause briefly to allow the GUI to update
-        self.fig.canvas.flush_events()
+        return 0
         
         
     def run_sim(self, iterations):
@@ -241,22 +236,62 @@ class clump:
         start = time.perf_counter()
         for i in range(iterations):
             log.info(f'running iteration {i+1}')
-            cl.update()
-            cl.draw()
+            self.update()
             log.info(f"\n\n\n")
             
-        plt.ioff()
         log.info(f"total runtime {time.perf_counter()-start}")
         log.info(f"avg time per iteration {(time.perf_counter()-start)/iterations}")
-        plt.show()
+    
+    def run_sim_iteration(self):
+        start = time.perf_counter()
+        self.iterations = self.iterations + 1
+        log.info(f'running iteration {self.iterations}')
+        self.update()
+        log.info(f"\n\n\n")
+        
+        currentItTime = (time.perf_counter()-start)
+        self.totalTime = self.totalTime + currentItTime
+        log.info(f"total runtime {self.totalTime}")
+        log.info(f"avg time per iteration {self.totalTime/self.iterations}")
+        log.info(f"curent it time {currentItTime}")
+    
         
         
 
 if __name__ == "__main__":
+    log.setLevel(logging.INFO)
     
-    log.setLevel(logging.WARNING)
+    plt.ion() # Turn on interactive mode
+    fig, ax = plt.subplots()
+    
     
     cl = clump()
-    cl.run_sim(iterations=1000)
+    
+    for i in range(1200):
+        cl.run_sim_iteration()
+    
+        # fig.clf()
+        ax.cla()
+        
+        # draw as particles
+        # for particle in cl.particles:
+        #     ax.plot(particle.positionVec[0],particle.positionVec[1], marker='o', color = 'red')
+        
+        # draw as lines
+        positions =  [particle.positionVec for particle in cl.particles]
+        # connect last point
+        positions.append(positions[0])
+        xPos = [position[0] for position in positions]
+        yPos = [position[1] for position in positions]
+        ax.plot(xPos,yPos, color = 'red')
+        ax.set_xlim(-500,500)
+        ax.set_ylim(-500,500)
+        
+        fig.canvas.draw()
+        # Process events and pause briefly to allow the GUI to update
+        fig.canvas.flush_events()
+    plt.ioff()
+    plt.show()
+    
 
 
