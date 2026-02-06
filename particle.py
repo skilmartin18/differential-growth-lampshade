@@ -6,7 +6,7 @@ import time
 from typing import Self
 import logging
 import multiprocessing
-
+import random
 logging.basicConfig(
     # filename='app.log', 
     level=logging.INFO, 
@@ -18,10 +18,11 @@ log = logging.getLogger("logger")
 
 class force:
     
-    def __init__(self):
-        self.repulsionDistance = 75
-        self.attractionDistance = 100
-        self.springConstant = 20
+    def __init__(self, rDistance = 75, aDistance = 100, k = 20, clamp = 100):
+        self.repulsionDistance = rDistance
+        self.attractionDistance = aDistance
+        self.springConstant = k
+        self.clamp = clamp
         
 
     def calc_force(self, norm):
@@ -30,6 +31,9 @@ class force:
             return 0
         force = (self.springConstant/(norm*norm)) 
         
+        if force > self.clamp:
+            force = self.clamp
+            
         return -force
     
     def calc_force_repulse(self, norm):
@@ -38,6 +42,9 @@ class force:
             return 0
         force = (self.springConstant/(norm*norm)) 
         
+        if force > self.clamp:
+            force = self.clamp
+            
         return -force
     
     def calc_force_attract(self, norm):
@@ -46,19 +53,38 @@ class force:
             return 0
         force = (self.springConstant/(norm*norm)) 
         
-        return force
+        if force > self.clamp:
+            force = self.clamp
             
+        return force
+
+class perturbation():
+    
+    def __init__(self, prob = 0.75, magnitude=1):
+        self.magnitude = magnitude
+        self.prob = prob
+        
+    def perturb(self, vector: np.array) -> np.array:
+        
+        # move the whole vector by a bit, with a chance
+        
+        if random.random() < self.prob:
+            amount = random.random()
+            return vector + amount*self.magnitude
+        else:
+            return vector
+        
              
 class particle:
     
-    def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.7):
+    def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.5):
         
         self.positionVec = np.array(initialPos)
         self.velocityVec = np.array([0,0,0])
         self.mass = mass
         self.friction = friction
         
-    def update_velocity(self, particlesVectors: np.array, _force: force.calc_force = None):
+    def update_velocity(self, particlesVectors: np.array, _force: force.calc_force = force()):
         
         start = time.perf_counter()
         log.debug("calculating forces on particle...")
@@ -89,15 +115,18 @@ class particle:
 
 class clump:
     
-    def __init__(self, size: int = 4, radius = 40, insertDistance = 15, force_func: force = None, initial_peturbation: force = None, peturbation: force = None):
+    def __init__(self, size: int = 10, radius = 40, insertDistance = 15, _force: force = None, _perturbation: force = None):
         
         self.particles = []
         self.insertDistance = insertDistance
-        self.place_particles(size,radius)
         self.force_func = force()
+        self.p = _perturbation
+        self.force_func = _force
         self.iterations = 0
         self.totalTime = 0
+        
   
+        self.place_particles(size,radius)
         
             
     def place_particles(self, size: int, radius: float):
@@ -117,7 +146,11 @@ class clump:
                 )
             )
             log.debug(f"placing particle @{self.particles[i].positionVec}")
-    
+
+        for thing in self.particles:
+            
+            thing.positionVec = self.p.perturb(thing.positionVec)
+            
     def update_particle(self, particle_index):
         
         log.debug(f"updating velocity on particle {particle}")
@@ -159,8 +192,9 @@ class clump:
         # only attract particles on left and right of current
         attractedParticles = np.array([self.particles[i-1].positionVec,self.particles[(i+1)%len(self.particles)].positionVec])
         attractedParticlesVectors = attractedParticles - self.particles[i].positionVec
+        particlesNorm = np.sum(attractedParticlesVectors**2,1)
         log.debug(f"attracted particles {attractedParticles}")
-        self.particles[i].update_velocity(attractedParticlesVectors,self.force_func.calc_force_attract)
+        self.particles[i].update_velocity(attractedParticlesVectors[particlesNorm > self.force_func.repulsionDistance],self.force_func.calc_force_attract)
         # this will calculate peturbation force
         
     
@@ -171,33 +205,23 @@ class clump:
         
         start  = time.perf_counter()
         
-        # calculate all force vectors
-        log.info("updating particles...")
-        log.info("updating particle velocities...")
-        
-        # since each particle is calculated in isolation (they are all updated at once) 
-        # we might actually be able to make this multi-threaded/processed to increase speeds
-        
-        # for i in range(len(self.particles)):
-        #     self.update_particle(i)
-        
-        # multiprocessed version
+        # multiprocessed calculate all particles velocity
         particlesIndex = list(range(0,len(self.particles),1))
         with multiprocessing.Pool() as pool:
             results = pool.map(self.update_particle,particlesIndex)
        
         self.particles = results   
+        log.info("updated particles...")
         
-        log.info("updating particle positions...")
+        
         for particle in self.particles:
             particle.update_position()
+        log.info("updated particle positions...")
         
         log.info("inserting new nodes...")
-        # insert
         self.insert()
         log.info(f'node count after insertion {len(self.particles)}')
-        
-        log.info(f'updated in {time.perf_counter()-start:.4f}')
+        log.debug(f'updated in {time.perf_counter()-start:.4f}')
     
     
     def insert(self):
@@ -237,8 +261,6 @@ class clump:
         for i in range(iterations):
             log.info(f'running iteration {i+1}')
             self.update()
-            log.info(f"\n\n\n")
-            
         log.info(f"total runtime {time.perf_counter()-start}")
         log.info(f"avg time per iteration {(time.perf_counter()-start)/iterations}")
     
@@ -246,15 +268,12 @@ class clump:
         start = time.perf_counter()
         self.iterations = self.iterations + 1
         log.info(f'running iteration {self.iterations}')
-        self.update()
-        log.info(f"\n\n\n")
-        
+        self.update() 
         currentItTime = (time.perf_counter()-start)
         self.totalTime = self.totalTime + currentItTime
         log.info(f"total runtime {self.totalTime}")
         log.info(f"avg time per iteration {self.totalTime/self.iterations}")
-        log.info(f"curent it time {currentItTime}")
-    
+        log.info(f"curent it time {currentItTime}\n\n\n")
         
         
 
