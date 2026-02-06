@@ -19,7 +19,7 @@ ax = fig.add_subplot(projection='3d')
 
 ### SIMULATION PARAMS ###
 ITERATIONS = 1200
-_perturbation_func = particle.perturbation(prob=0.75, magnitude=0.5)
+_perturbation_func = particle.perturbation(prob=0.5, magnitude=2)
 _general_force = particle.force(rDistance=75, aDistance=100, k=30, clamp = 1e999)
 SIZE = 8
 RADIUS = 40
