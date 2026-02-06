@@ -77,13 +77,13 @@ class perturbation():
              
 class particle:
     
-    def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.5):
+    def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.5, life = 1e99):
         
         self.positionVec = np.array(initialPos)
         self.velocityVec = np.array([0,0,0])
         self.mass = mass
         self.friction = friction
-        self.life = 50
+        self.life = life
         
     def update_velocity(self, particlesVectors: np.array, _force: force.calc_force):
         
