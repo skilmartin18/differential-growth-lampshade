@@ -7,22 +7,33 @@ from typing import Self
 import logging
 import multiprocessing
 import random
+
 logging.basicConfig(
     # filename='app.log', 
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s',
     # filemode='a' # 'a' for append (default), 'w' to overwrite each time
 )
-
 log = logging.getLogger("logger")
+
 
 class force:
     
-    def __init__(self, rDistance = 75, aDistance = 100, k = 20, clamp = 100):
+    def __init__(self, rDistance = 75, aDistance = 100, k = 20, neighbors = 1, clamp = 1e99):
+        """generic force for application to particles. 
+
+        Args:
+            rDistance (int, optional): distance at which particles will begin to repel eachother. Defaults to 75.
+            aDistance (int, optional): _description_. Defaults to 100.
+            k (int, optional): _description_. Defaults to 20.
+            clamp (_type_, optional): _description_. Defaults to 1e99.
+        """
+        
         self.repulsionDistance = rDistance
         self.attractionDistance = aDistance
         self.springConstant = k
         self.clamp = clamp
+        self.neighbors = neighbors
         
 
     def calc_force(self, norm):
@@ -77,13 +88,15 @@ class perturbation():
              
 class particle:
     
-    def __init__(self, initialPos: list[float] = [0,0,0], mass = 1, friction = 0.5, life = 1e99):
+    def __init__(self, initialPos: list[float] = [0,0,0], **kwargs):
         
         self.positionVec = np.array(initialPos)
         self.velocityVec = np.array([0,0,0])
-        self.mass = mass
-        self.friction = friction
-        self.life = life
+        self.mass = kwargs.get('mass', 1)
+        self.friction = kwargs.get('friction', 0.5)
+        self.life = kwargs.get('life', 1e99)
+        self.kwargs = kwargs
+        
         
     def update_velocity(self, particlesVectors: np.array, _force: force.calc_force):
         
@@ -115,33 +128,31 @@ class particle:
             self.positionVec = self.positionVec + self.velocityVec
             self.velocityVec = self.velocityVec*self.friction
             self.life = self.life - 1
-        
-        print(incrementZ)
+ 
         if incrementZ:
             self.positionVec = self.positionVec + np.array([0,0,1])
+            
             
 
 class clump:
     
-    def __init__(self, size: int = 10, radius = 40, insertDistance = 15, _force: force = force(), _perturbation: force = None):
+    def __init__(self, size: int = 10, radius = 40, insertDistance = 15, _force: force = force(), _perturbation: perturbation = perturbation(), particleKwargs = {}):
         
         self.particles = []
         self.insertDistance = insertDistance
-        self.force_func = force()
-        self.p = _perturbation
-        self.force_func = _force
+        self._force = _force
+        self._perturbation = _perturbation
         self.iterations = 0
         self.totalTime = 0
+        self.particleKwargs = particleKwargs
         
-  
         self.place_particles(size,radius)
         
             
     def place_particles(self, size: int, radius: float):
-        # basic version places particles in a circle only
-        
+       
         locations = np.linspace(0,2*3.14159,size+1)
-        
+    
         for i in range(size):
             
             self.particles.append(
@@ -150,14 +161,14 @@ class clump:
                     radius*np.cos(locations[i]),
                     radius*np.sin(locations[i]),
                     0
-                    ]
+                    ],
+                    **self.particleKwargs
                 )
             )
             log.debug(f"placing particle @{self.particles[i].positionVec}")
-
-        for thing in self.particles:
-            
-            thing.positionVec = self.p.perturb(thing.positionVec)
+        # perturb
+        for part in self.particles:
+            part.positionVec = self._perturbation.perturb(part.positionVec)
             
     def update_particle(self, particle_index):
         
@@ -168,14 +179,13 @@ class clump:
         particlesPositions = []
         particlesPositions.append([particle.positionVec for particle in self.particles])
         particlesPositions = np.array(particlesPositions[0])
-        # print(particlesPositions)
-        
+       
         # if we calculate the norm, we can check boundaries and apply the correct forces
         particlesVectors = particlesPositions - self.particles[i].positionVec
         particlesNorm = np.sum(particlesVectors**2,1)
         
         # these are the particles to be repulsed
-        repulsedParticles = (particlesNorm < (self.force_func.repulsionDistance**2)) 
+        repulsedParticles = (particlesNorm < (self._force.repulsionDistance**2)) 
         selfParticle = particlesNorm != 0
         
         allParticles = repulsedParticles & selfParticle
@@ -183,9 +193,9 @@ class clump:
         log.debug(f"particles that arent self {selfParticle}")
         log.debug(f"combined set: {allParticles}")
         # this will calculate repuslive force
-        self.particles[i].update_velocity(particlesVectors[allParticles],self.force_func.calc_force_repulse)
+        self.particles[i].update_velocity(particlesVectors[allParticles],self._force.calc_force_repulse)
         
-        # these are the particles to be attracted
+        # these are the particles to be attracted- attracting all particles doesnt work? only side by side
         # notRepulsedParticles = particlesNorm > self.force_func.repulsionDistance**2
         # attractedParticles = particlesNorm < self.force_func.attractionDistance**2
         # selfParticle = particlesNorm != 0
@@ -199,13 +209,16 @@ class clump:
         
         # only attract particles on left and right of current
         attractedParticles = np.array([self.particles[i-1].positionVec,self.particles[(i+1)%len(self.particles)].positionVec])
+        
+        n = self._force.neighbors
+        attractedParticlesPositions = attractedParticles[i-n:(i+n)%len(self.particles)]
+        
+        attractedParticlesVectors = attractedParticlesPositions - self.particles[i].positionVec
+        
         attractedParticlesVectors = attractedParticles - self.particles[i].positionVec
         particlesNorm = np.sum(attractedParticlesVectors**2,1)
         log.debug(f"attracted particles {attractedParticles}")
-        self.particles[i].update_velocity(attractedParticlesVectors[particlesNorm > self.force_func.repulsionDistance],self.force_func.calc_force_attract)
-        # this will calculate peturbation force
-        
-    
+        self.particles[i].update_velocity(attractedParticlesVectors[particlesNorm > self._force.repulsionDistance],self._force.calc_force_attract)
     
         return self.particles[i]
     
@@ -230,6 +243,7 @@ class clump:
         self.insert()
         log.info(f'node count after insertion {len(self.particles)}')
         log.debug(f'updated in {time.perf_counter()-start:.4f}')
+        
     
     
     def insert(self):
@@ -246,7 +260,7 @@ class clump:
             if mag > self.insertDistance:
                 log.debug("inserted")
                 newParticlePos = self.particles[i].positionVec + 0.5*diff
-                newParticle = particle(newParticlePos)
+                newParticle = particle(newParticlePos, **self.particleKwargs)
                 self.particles.insert(i+1,newParticle)
             else: 
                 # we only move to the next particle if a new one WASN'T added
@@ -255,14 +269,7 @@ class clump:
                 log.debug("no insertion required")
                
                 i = i+1 
-
-    def initial_peturbation(self,particle):
-        pass
-    
-    def peturbation_function(self):
-        return 0
-        
-        
+             
     def run_sim(self, iterations):
         
         start = time.perf_counter()
