@@ -40,11 +40,6 @@ class growth_sim():
         if not showProgress:
             self.ax.cla()
         
-        
-        # print(len(self.clump.particles))
-        # for p in self.clump.particles:
-        #     self.ax.plot(p.positionVec[0],p.positionVec[1], marker='o', color = 'red')
-
         positions =  [particle.positionVec for particle in self.clump.particles]
         positions.append(positions[0])
         
@@ -60,6 +55,7 @@ class growth_sim():
             marker = 'o'
         else:
             marker = ""
+            
         self.ax.plot(xPos,yPos,zPos, marker=marker, color = colour)
         self.ax.set_xlim(-400,400)
         self.ax.set_ylim(-400,400)
@@ -77,7 +73,7 @@ if __name__ == "__main__":
     ### CLUMP PARAMS ###
     ITERATIONS = 300
     _perturbation_func = particle.perturbation(prob=1, magnitude=2)
-    _general_force = particle.force(rDistance=75, aDistance=100, k=30, clamp = 1e999)
+    _general_force = particle.force(rDistance=75, aDistance=100, k=30, neighbors=1, clamp = 1e999)
 
     SIZE = 8
     RADIUS = 40

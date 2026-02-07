@@ -19,7 +19,7 @@ log = logging.getLogger("logger")
 
 class force:
     
-    def __init__(self, rDistance = 75, aDistance = 100, k = 20, clamp = 1e99):
+    def __init__(self, rDistance = 75, aDistance = 100, k = 20, neighbors = 1, clamp = 1e99):
         """generic force for application to particles. 
 
         Args:
@@ -33,6 +33,7 @@ class force:
         self.attractionDistance = aDistance
         self.springConstant = k
         self.clamp = clamp
+        self.neighbors = neighbors
         
 
     def calc_force(self, norm):
@@ -141,7 +142,6 @@ class clump:
         self.insertDistance = insertDistance
         self._force = _force
         self._perturbation = _perturbation
-        self.force_func = _force
         self.iterations = 0
         self.totalTime = 0
         self.particleKwargs = particleKwargs
@@ -195,7 +195,7 @@ class clump:
         # this will calculate repuslive force
         self.particles[i].update_velocity(particlesVectors[allParticles],self._force.calc_force_repulse)
         
-        # these are the particles to be attracted
+        # these are the particles to be attracted- attracting all particles doesnt work? only side by side
         # notRepulsedParticles = particlesNorm > self.force_func.repulsionDistance**2
         # attractedParticles = particlesNorm < self.force_func.attractionDistance**2
         # selfParticle = particlesNorm != 0
@@ -209,6 +209,12 @@ class clump:
         
         # only attract particles on left and right of current
         attractedParticles = np.array([self.particles[i-1].positionVec,self.particles[(i+1)%len(self.particles)].positionVec])
+        
+        n = self._force.neighbors
+        attractedParticlesPositions = attractedParticles[i-n:(i+n)%len(self.particles)]
+        
+        attractedParticlesVectors = attractedParticlesPositions - self.particles[i].positionVec
+        
         attractedParticlesVectors = attractedParticles - self.particles[i].positionVec
         particlesNorm = np.sum(attractedParticlesVectors**2,1)
         log.debug(f"attracted particles {attractedParticles}")
