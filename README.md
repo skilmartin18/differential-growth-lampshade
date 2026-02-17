@@ -38,3 +38,21 @@ Non-multiprocessed:
 
 
 - simulation -> make save files for runs, periodically save logs and image of cells 
+- simulation -> export and import previous vases
+- smoothing algorithm is complete, now apply it to a whole vase
+
+
+Basic process:
+
+experiment with settings in 2d mode, find a final outline you like DONE
+
+turn into vase, either final layer repitition, or by incrementing Z each layer DONE
+
+save vase as file/pickle whatever, this is just a file of matrices/clump.particles.positionVec DONE
+
+Normalise vase into a better shape- using polar coordinates method to normalise to a specific shape? 
+
+Smooth Vase edges using a kernel filter? (need to make sure it only acts in 2 dimensions) DONE
+
+Potentially rotate layers - incrementally rotate layers to also 'twist' the vase
+

@@ -95,6 +95,7 @@ class particle:
         self.mass = kwargs.get('mass', 1)
         self.friction = kwargs.get('friction', 0.5)
         self.life = kwargs.get('life', 1e99)
+        self.growthRate = kwargs.get('growthRate', 1)
         self.kwargs = kwargs
         
         
@@ -125,9 +126,12 @@ class particle:
     def update_position(self, incrementZ = False):
         
         if self.life > 0:
-            self.positionVec = self.positionVec + self.velocityVec
+            self.positionVec = self.positionVec + self.velocityVec*self.growthRate
             self.velocityVec = self.velocityVec*self.friction
             self.life = self.life - 1
+        # to stop ressurected partices from surging forwards, you cannot grow while dead
+        if self.life <= 0:
+            self.velocityVec = np.array([0,0,0])
  
         if incrementZ:
             self.positionVec = self.positionVec + np.array([0,0,1])
@@ -145,7 +149,7 @@ class clump:
         self.iterations = 0
         self.totalTime = 0
         self.particleKwargs = particleKwargs
-        
+        self.stop = False
         self.place_particles(size,radius)
         
             
@@ -169,7 +173,20 @@ class clump:
         # perturb
         for part in self.particles:
             part.positionVec = self._perturbation.perturb(part.positionVec)
-            
+      
+    def create_growing_zone(self, percentCoverage, life, growthRate):
+        # the aim of this function is to create geometrically contiguous zones of 'invigorated growth'
+        # whether that means increasing the lifespan of cells, or increaing a the growth rate remains to be tested.
+        
+        # randomly choose a starting cell
+        start = int(np.floor(random.random()*len(self.particles)))
+        coverage = int(np.floor(percentCoverage*len(self.particles)))
+        # edit all cells from starting cell to final cell based on percentCoverage
+        for i in range(start, start+coverage):
+            self.particles[i%len(self.particles)].life = self.particles[i%len(self.particles)].life + life
+
+        log.info(f"inserted growing zone from {start} to {start+coverage}")
+        
     def update_particle(self, particle_index):
         
         log.debug(f"updating velocity on particle {particle}")
@@ -242,9 +259,7 @@ class clump:
         log.info("inserting new nodes...")
         self.insert()
         log.info(f'node count after insertion {len(self.particles)}')
-        log.debug(f'updated in {time.perf_counter()-start:.4f}')
-        
-    
+        log.debug(f'updated in {time.perf_counter()-start:.4f}')    
     
     def insert(self):
         
@@ -276,6 +291,10 @@ class clump:
         for i in range(iterations):
             log.info(f'running iteration {i+1}')
             self.update()
+            
+            if self.stop:
+                break
+            
         log.info(f"total runtime {time.perf_counter()-start}")
         log.info(f"avg time per iteration {(time.perf_counter()-start)/iterations}")
     
@@ -290,42 +309,7 @@ class clump:
         log.info(f"avg time per iteration {self.totalTime/self.iterations}")
         log.info(f"curent it time {currentItTime}\n\n\n")
         
-        
 
-if __name__ == "__main__":
-    log.setLevel(logging.INFO)
-    
-    plt.ion() # Turn on interactive mode
-    fig, ax = plt.subplots()
-    
-    
-    cl = clump()
-    
-    for i in range(1200):
-        cl.run_sim_iteration()
-    
-        # fig.clf()
-        ax.cla()
-        
-        # draw as particles
-        # for particle in cl.particles:
-        #     ax.plot(particle.positionVec[0],particle.positionVec[1], marker='o', color = 'red')
-        
-        # draw as lines
-        positions =  [particle.positionVec for particle in cl.particles]
-        # connect last point
-        positions.append(positions[0])
-        xPos = [position[0] for position in positions]
-        yPos = [position[1] for position in positions]
-        ax.plot(xPos,yPos, color = 'red')
-        ax.set_xlim(-500,500)
-        ax.set_ylim(-500,500)
-        
-        fig.canvas.draw()
-        # Process events and pause briefly to allow the GUI to update
-        fig.canvas.flush_events()
-    plt.ioff()
-    plt.show()
     
 
 
