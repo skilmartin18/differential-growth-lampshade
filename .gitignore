@@ -1,0 +1,14 @@
+# ignore all saves other than the example
+!/saves/
+/saves/*
+!/saves/example_save/*
+
+
+
+# ignore all stls other than the example 
+!/stls/
+/stls/*
+!/stls/example.stl
+
+
+__pycache__
