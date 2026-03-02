@@ -1,6 +1,4 @@
 import numpy as np
-# import matplotlib
-# matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import time
 from typing import Self
@@ -8,13 +6,13 @@ import logging
 import multiprocessing
 import random
 
+
 logging.basicConfig(
-    # filename='app.log', 
     level=logging.INFO, 
     format='%(asctime)s - %(levelname)s - %(message)s',
-    # filemode='a' # 'a' for append (default), 'w' to overwrite each time
 )
-log = logging.getLogger("logger")
+
+log = logging.getLogger("differential-growth")
 
 
 class force:

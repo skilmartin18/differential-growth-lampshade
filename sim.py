@@ -113,7 +113,7 @@ class growth_sim():
     
     ### vase ###
     
-    def grow_vase(self, iterations, layers = 20, startingIt = 0, saveToFile = False):
+    def grow_vase(self, iterations, layers = 20, startingIt = 0, saveToFile = False, draw = True):
         
         itsperlayer = int(np.ceil(iterations/layers))
         layer = 0
@@ -132,7 +132,9 @@ class growth_sim():
                     particle.positionVec[2] = layer
                 
                 layer = layer + 1
-                self.draw_clump(showProgress=True, colour=self.colourMap(i/iterations))
+                
+                if draw:
+                    self.draw_clump(showProgress=True, colour=self.colourMap(i/iterations))
                 
                 # inside loop only save to object, dont write to file
                 if saveToFile:
@@ -178,6 +180,42 @@ class growth_sim():
             self.clump = clump
             self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
     
+    def modulated_vase(self,layers = 20, layer = 0, rBounds = (80,160,15), period=1, showProgress=False, zInc = 1, taper = 0, rotation = 0):
+        
+        # two kinds of show progress, we want to retain each 2d plot but dont want 
+        # to retain multiple vases
+        if not showProgress:
+            self.ax.cla()
+            
+        firstLayer = deepcopy(self.layers[layer])
+        self.layers = []
+        
+        for i in range(layers):
+            
+            rangeFactor = np.sin( (i/layers * period * 2 *3.14) ) * rBounds[2]
+      
+            # for each layer we get a clump (functions operate on self so make ach layer hte main clump)
+            self.clump = deepcopy(firstLayer)
+            
+            # we then convert it to polar
+            self.convert_to_polar()
+            t = taper*i
+            # normalise, with bounds alternating based on a sin wave
+            self.normalise_to_circle(min=rBounds[0]+rangeFactor-t,max=rBounds[1]+rangeFactor-t)
+            self.rotate_layer(np.deg2rad( (i/layers)*rotation))
+            self.polar_update_clump()
+    
+            # increment Z in all clump particles
+            for particle in self.clump.particles:
+                particle.positionVec[2] = i*zInc
+            
+            self.layers.append(deepcopy(self.clump))
+            self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
+        
+    def rotate_layer(self,radians=0):
+        for i in range(len(self.polarClump[0])):
+            self.polarClump[0][i] = (self.polarClump[0][i]+radians)
+   
     ### smoothing ###
     
     def smooth_vase(self, smoothing_function, smoothingKwargs = {}):
@@ -194,7 +232,7 @@ class growth_sim():
             
             self.smooth_vase(smoothingFunction, smoothingKwargs)
             
-            if i % displayIts == 0:
+            if i+1 % displayIts == 0:
                 self.draw_vase()
      
     
@@ -313,6 +351,8 @@ class growth_sim():
         
       
         self.polarClump = [self.polarClump[0], magNorms]
+    
+    
     
     def draw_polar(self):   
         # figures for polar normalisation
@@ -460,11 +500,112 @@ class growth_sim():
         
         return layers[layer]
     
+    def trim_vase(self,layersToTrim):
+        self.layers = self.layers[layersToTrim:]
+        
+    def convert_layers_to_mesh(self,meshTopBottom = False, showPlotly=False):
+        # this is possibly THE WORST way to do this.
+        # i have no 3d modelling experience, so this is a brute force method of creating a mesh
+        
+        # final layer is always the largest (this is mathematically true... not a guess)
+        maxVertices = len(self.layers[-1].particles)
+        log.info(f"all layers need to be remeshed to {maxVertices} vertices")
+        
+        newLayers = []
+        for i,layer in enumerate(self.layers):
+            
+            positions =  np.array([particle.positionVec for particle in layer.particles])
+            log.info(f"adding {maxVertices-len(positions)} vertices to layer {i}")
+            
+            while len(positions) < maxVertices:
+                
+                # shift all positions one to the right (vert x-1 now in position x)
+                # (particles are orderer anti clockwise?)
+                positionsNextVert = np.roll(positions,-1, axis=0)
+
+                # difference between next vertice and current one normed
+                # gives an array of magnitudes, where each index corresponds to a colinear pair of vertices
+                # i.e index 1 has the distance between 1->2, index 2 has 2->3
+                nextVertMag = np.linalg.norm(positionsNextVert - positions, axis=1)
+            
+                # get pair with highest magnitude
+                # previous code used the whole list and iterated though it, but adding data to a list while adding to it 
+                # causes issues that are easy to fix with brute force instead of thinking
+                furthestPair = np.flip(np.argsort(nextVertMag))[0]
+            
+                # get a new vertex halfway between current and neighbor
+                diff = positions[(furthestPair+1)%len(positions)] - positions[furthestPair]
+                newParticlePos = positions[furthestPair] + diff*0.5
+                
+                positions = np.insert(positions, furthestPair+1, newParticlePos, axis=0)
+                # we now have the pair of points with the highest distance between them
+                # pair X means vertex X->X+1
+                # we may have to insert into a new array as we are iterating through the same array that we are editing
+            
+            newLayers.append(positions)
+            
+        # convert array with seperate layers into one long array
+        allLayers = np.concatenate(newLayers)
+        
+        # to index a point at vertex i in layer j we use this formula (modulo so we can wrap in x axis)
+        # allLayers[ (i%maxVertices) + j*maxVertices ]
+        def ij_to_index(i,j):
+            return (i%maxVertices) + j*maxVertices
+        
+        triangles = []
+        # iterate through all layers, starting at the bottom, skip the last layer as it does not connect to anything
+        for j in range(len(newLayers)-1):
+            
+            for i in range(maxVertices):
+                
+                # first triangle goes from
+                # *  *  *    
+                # |\
+                # | \
+                # *--*  *    
+                # i,j -> i+1,j -> i,j+1
+                # second triangle goes from
+                # *--*  *    
+                # |\ |
+                # | \|
+                # *--*  * 
+                # i,j+1 -> i+1,j+1 -> i+1, j
+                
+                triangle1 = np.array([
+                    ij_to_index(i,j),
+                    ij_to_index(i+1,j),
+                    ij_to_index(i,j+1)
+                    
+                ])
+                triangle2 = np.array([
+                    ij_to_index(i,j+1),
+                    ij_to_index(i+1,j+1),
+                    ij_to_index(i+1,j)
+                ])
+                
+                triangles.append(triangle1)
+                triangles.append(triangle2)
+                
+                
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(allLayers)
+        mesh.triangles = o3d.utility.Vector3iVector(triangles)
+        mesh.compute_vertex_normals()
+
+        if showPlotly:
+            o3d.visualization.draw_plotly([mesh])
+
+        self.mesh = mesh
+        
+        return mesh
+    
+    def export_mesh_stl(self, filename = 'out'):
+        o3d.io.write_triangle_mesh(f"{filename}.stl", self.mesh)
 if __name__ == "__main__":
     
     
     ### CLUMP PARAMS ###
-    ITERATIONS = 500
+    ITERATIONS = 300
     _perturbation_func = particle.perturbation(prob=0.5, magnitude=2)
     _general_force = particle.force(rDistance=75, aDistance=100, k=40, neighbors=1, clamp = 1e999)
 
@@ -506,120 +647,13 @@ if __name__ == "__main__":
     # sim.grow_clump(ITERATIONS, showProgress=True)
     
     # simulate vase growth
-    # sim.grow_vase(ITERATIONS, layers=50,saveToFile=True)
+    # sim.grow_vase(ITERATIONS, layers=ITERATIONS,saveToFile=True)
     
     # load clump from file
     sim.load_clump_from_layers("/home/skilmartin/code/differential-growth/saves/example_save/layers.pkl",layer=48)
-    # sim.draw_vase()
-    
-    # sim.run_vase_smoothing(100, sim.gaussian_smooth, smoothingKwargs={'points': 11}, displayIts=20)
-    
-    # open3d testing
-    
-    # 1. Create a NumPy array of 3D points (N, 3 shape)
-    # This example creates 100 random points for demonstration
-    
-    # WILL PROBABLY NEED TO SUBDIVIDE SO ALL LAYERS HAVE THE SAME AMOUNT OF VERTICES
-    
-    # find the amount of additional vertices required
-    
-    # order the current list of vertices pairs, by the magnitude between them, highest to lowest
-    # i.e for each pair of vertices, calculate the magnitude between them
-    # label the pairs 
-    # sort the magnitude (and labels) highest to lowest
-    # starting with the pair with greatest magnitude, insert a point between them
-    # run through until the magnitude labels list is exhausted 
-    # repeat until correct number of vertices
-    
-    # repeat for all layers
-    
-    # final layer is always the largest
-    maxVertices = len(sim.layers[-1].particles)
-    
-    print(maxVertices)
-    
-    allPositions = []
-    for i,layer in enumerate(sim.layers):
-        
-        positions =  np.array([particle.positionVec for particle in layer.particles])
-        newPositions = deepcopy(positions)
-        
-        # shift all positions one to the left (vert x+1 now in position x)
-        positionsNextVert = np.roll(positions,-1, axis=0)
-        
-        # difference between next vertice and current one normed
-        # gives an array of magnitudes, where each index corresponds to a colinear pair of vertices
-        # i.e index 1 has the distance between 1->2, index 2 has 2->3
-        nextVertMag = np.linalg.norm(positionsNextVert - positions, axis=1)
-
-        # sorted indices
-        sortedVertMagI = np.flip(np.argsort(nextVertMag))
-        
-        print(f"num pos before {len(newPositions)}")
-        for pair in sortedVertMagI:
-            
-            print("inserting")
-            newParticlePos = positions[pair] + positionsNextVert[pair]*0.5
-            newPositions = np.insert(newPositions, pair, newParticlePos, axis=0)
-            # we now have the pair of points with the highest distance between them
-            # pair X means vertex X->X+1
-            # we may have to insert into a new array as we are iterating through the same array that we are editing
-            pass
-        
-        print(f"num pos after {len(newPositions)}")
-        
-        break
-        
-        # # print(positions)
-        # allPositions.append(positions)
-    print(newPositions)
-    xPos = [position[0] for position in newPositions]
-    yPos = [position[1] for position in newPositions]
-    
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot()
-        
-    ax.set_autoscale_on(True)
-    ax.plot(xPos,yPos, color = 'red')
-    
-    print(len(xPos))
-    print(len(yPos))
-    plt.ioff()
-    plt.show()
-    
-    xPos = [position[0] for position in positions]
-    yPos = [position[1] for position in positions]
-    
-    fig = plt.figure(figsize=(12, 8))
-    ax = fig.add_subplot()
-        
-    ax.set_autoscale_on(True)
-    ax.plot(xPos,yPos, color = 'red')
-    
-    print(len(xPos))
-    print(len(yPos))
-    plt.ioff()
-    plt.show()
-    
-    # 2. Create a PointCloud object
-    # pcd = o3d.geometry.PointCloud()
-    # # 3. Assign the NumPy array to the point cloud
-    # pcd.points = o3d.utility.Vector3dVector(allPositions)
-    
-    # pcd.estimate_normals()
-
-    
-    # radii = [1,2,3,4,5,6,7,8,9,10,15,20,25]
-    # rec_mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
-    # pcd, o3d.utility.DoubleVector(radii))
-    # # Optional: Visualize the point cloud
-    # o3d.visualization.draw_plotly([rec_mesh])
-        
-    
-    
-    
-    
-    
+    sim.run_vase_smoothing(10, sim.gaussian_smooth, smoothingKwargs={'points': 11}, displayIts=20)
+  
+    sim.convert_layers_to_mesh(showPlotly=True)
     
     # sim.convert_to_polar()
     # sim.normalise_to_circle()
@@ -630,4 +664,15 @@ if __name__ == "__main__":
     # sim.run_vase_smoothing(20, sim.gaussian_smooth, smoothingKwargs={'points': 7}, displayIts=10)
     # sim.draw_polar()
     # sim.show()
+    
+   
+   
+        
+    
+    
+    
+    
+    
+    
+   
     
