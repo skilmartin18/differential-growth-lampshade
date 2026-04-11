@@ -17,7 +17,7 @@ import sim
 
 # this will be a basic clump
 
-if False:
+if True:
     ITERATIONS = 300
     _perturbation_func = particle.perturbation(prob=0.5, magnitude=2)
     _general_force = particle.force(rDistance=75, aDistance=100, k=40, neighbors=1, clamp = 1e999)
@@ -54,8 +54,9 @@ if False:
     sim = sim.growth_sim(cl, threeD=True, growingKwargs=growingParams, saveToFile=True)
 
     # simulate vase growth
-    sim.grow_vase(ITERATIONS, layers=ITERATIONS,saveToFile=True, draw=False)
+    sim.grow_vase(ITERATIONS, layers=ITERATIONS,draw=True)
     sim.draw_vase(showProgress=True)
+    sim.save_clump(filename="../saves/new")
     sim.show()
 
 if False: 
@@ -194,7 +195,7 @@ if False:
     sim.show()
     
        
-if True: 
+if False: 
 
     ### CLUMP PARAMS ###
 

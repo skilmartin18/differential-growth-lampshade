@@ -9,13 +9,26 @@ import os
 import pickle
 from copy import deepcopy
 import open3d as o3d
+from collections.abc import Callable
 
-log = logging.getLogger("logger")
+log = logging.getLogger("differential-growth")
+
+"""growth_sim is a utility module used to help generate lampshades/vases from simulated clumps
+It has slowly grown as required, and unfortunately is one of the worst designed pieces of software
+i have ever written.
+"""
 
 class growth_sim():
     
-    def __init__(self, clump: particle.clump | str, threeD=False, saveToFile = False, growingKwargs = None):
-        
+    def __init__(self, clump: particle.clump | str, threeD: bool =False, saveToFile: bool = False, growingKwargs: dict = None):
+        """initialise a vase simulation
+
+        Args:
+            clump (particle.clump | str): either pass in a clump to grow, or the path to a pickled layers file
+            threeD (bool, optional): changes the plotting mode to 3d. Defaults to False.
+            saveToFile (bool, optional): save the resultant vase to a file. Defaults to False.
+            growingKwargs (dict, optional): growthZone kwargs to be passed to clump. Defaults to None.
+        """
         
         # load clump from object or pickle path
         if type(clump) == str:
@@ -24,7 +37,6 @@ class growth_sim():
             self.clump = clump
             
         # basic plot details
-        
         # make it interactive to show animations
         plt.ion() 
         self.fig = plt.figure(figsize=(12, 8))
@@ -43,19 +55,24 @@ class growth_sim():
        
         # kwargs for making growth zones
         self.growingKwargs = growingKwargs
-        
+        self.saveToFile = saveToFile
         self.layers = []
         self.polarClump = []
         self.stop = False
-    
+        self.fignum = 0
     ### clump ###
     
-    def grow_clump(self, iterations, animate = True, showProgress = False, saveToFile = False):
-        
-        # grow the input clump for a certain number of iterations 
+    def grow_clump(self, iterations: int, animate: bool = True, showProgress: bool = False):
+        """grows self.clump for a set number of iterations
+
+        Args:
+            iterations (int): number of iterations
+            animate (bool, optional): should the clump be drawn each step. Defaults to True.
+            showProgress (bool, optional): should canvas be wiped or retained per iteration. Defaults to False.
+        """
         for i in range(iterations):
-            
-            self.clump.run_sim_iteration(incrementZ=False)
+            self.fignum = i
+            self.clump.run_sim_iteration()
             self.insert_growing_zone(i, **self.growingKwargs)
             
             if animate:
@@ -65,13 +82,18 @@ class growth_sim():
                 break
         
         # save an object and a png at the end of the run
-        if saveToFile:
+        if self.saveToFile:
             self.layers.append(deepcopy(self.clump))
             self.save_clump()
       
-    def insert_growing_zone(self, iteration, **kwargs):
-        
+    def insert_growing_zone(self, iteration: int, **kwargs):
+        """insert a growing zone in the clump based on growingKwargs
+
+        Args:
+            iteration (int): current sim iteration
+        """
         # get kwargs with defaults
+        # how many iterations before a zone is added
         iterations = kwargs.get("growthZoneIterations", 1e99)
         coverage = kwargs.get('coverage', 0)
         life = kwargs.get('life', 100)
@@ -82,9 +104,16 @@ class growth_sim():
             log.info("creating zone")
             self.clump.create_growing_zone(coverage, life, growth)
     
-    def draw_clump(self, showProgress = False, showParticles = False, colour = 'red'):
+    def draw_clump(self, showProgress: bool = False, showParticles: bool = False, colour: str = 'red'):
+        """draw a 2d clump
+
+        Args:
+            showProgress (bool, optional): should canvas be wiped. Defaults to False.
+            showParticles (bool, optional): show particles as well as individual lines. Defaults to False.
+            colour (str, optional): matplotlib compatible colour. Defaults to 'red'.
+        """
         
-        # keep old lines drawn
+        # keep old lines drawn?
         if not showProgress:
             self.ax.cla()
         
@@ -107,13 +136,21 @@ class growth_sim():
         self.ax.plot(xPos,yPos,zPos, marker=marker, color = colour)
         
         self.fig.canvas.draw()
+        self.fig.savefig(f"./saves/{self.fignum}.png")
         self.fig.canvas.flush_events()
         
-        pass
     
     ### vase ###
     
-    def grow_vase(self, iterations, layers = 20, startingIt = 0, saveToFile = False, draw = True):
+    def grow_vase(self, iterations: int, layers: int = 20, startingIt: int = 0, draw: bool = True):
+        """grows a vase (a 2.5D clump)
+
+        Args:
+            iterations (int): how many iterations to grow for
+            layers (int, optional): how many layers tall to generate. Defaults to 20.
+            startingIt (int, optional): how many sim iterations to run before starting vase creation. Defaults to 0.
+            draw (bool, optional): draw the vase?. Defaults to True.
+        """
         
         itsperlayer = int(np.ceil(iterations/layers))
         layer = 0
@@ -121,7 +158,7 @@ class growth_sim():
         # the same as growing a clump, but this time we increase Z values to make a 2.5D vase
         for i in range(iterations):
             
-            self.clump.run_sim_iteration(incrementZ=False)
+            self.clump.run_sim_iteration()
             self.insert_growing_zone(i, **self.growingKwargs)
             
             # dont always want a layer per sim iteration
@@ -137,19 +174,28 @@ class growth_sim():
                     self.draw_clump(showProgress=True, colour=self.colourMap(i/iterations))
                 
                 # inside loop only save to object, dont write to file
-                if saveToFile:
+                if self.saveToFile:
                     self.layers.append(deepcopy(self.clump))
             
             if self.stop:
                 break
         
-        if saveToFile:
+        if self.saveToFile:
             self.save_clump()
   
-    def draw_vase(self, showProgress = False):
+    def draw_vase(self, showProgress: bool = False):
+        """draw a whole '2.75D' vase
+
+        Args:
+            showProgress (bool, optional): show progress... Defaults to False.
+        """
         
         # two kinds of show progress, we want to retain each 2d plot but dont want 
         # to retain multiple vases
+        
+        # this draws a 2.75d vase... although not using 3D differential growth, we use 
+        # new simulations per layer giving a tree/coral like view
+        
         if not showProgress:
             self.ax.cla()
             
@@ -158,10 +204,15 @@ class growth_sim():
             self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
         
     
-    def draw_vase_from_layer(self, layers = 20, layer = 0, showProgress = False):
+    def draw_vase_from_layer(self, layers: int = 20, layer: int = 0, showProgress: bool = False):
+        """Draws a 2.5D vase (a 3d vase which is extruded from a single layer)
+
+        Args:
+            layers (int, optional): how many layers high to extrude. Defaults to 20.
+            layer (int, optional): what layer to extrude. Defaults to 0.
+            showProgress (bool, optional): show progress... Defaults to False.
+        """
         
-        # two kinds of show progress, we want to retain each 2d plot but dont want 
-        # to retain multiple vases
         if not showProgress:
             self.ax.cla()
             
@@ -180,7 +231,7 @@ class growth_sim():
             self.clump = clump
             self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
     
-    def modulated_vase(self,layers = 20, layer = 0, rBounds = (80,160,15), period=1, showProgress=False, zInc = 1, taper = 0, rotation = 0):
+    def modulated_vase(self,layers = 20, layer = 0, rBounds = (80,160,15), period=1, showProgress=False, zInc = 1, taper: float | Callable = 0, rotation = 0):
         
         # two kinds of show progress, we want to retain each 2d plot but dont want 
         # to retain multiple vases
@@ -192,6 +243,7 @@ class growth_sim():
         
         for i in range(layers):
             
+            self.fignum = i
             rangeFactor = np.sin( (i/layers * period * 2 *3.14) ) * rBounds[2]
       
             # for each layer we get a clump (functions operate on self so make ach layer hte main clump)
@@ -199,7 +251,12 @@ class growth_sim():
             
             # we then convert it to polar
             self.convert_to_polar()
-            t = taper*i
+            
+            if type(taper) == float:
+                t = taper*i
+            elif callable(taper):
+                t = taper(i)
+                
             # normalise, with bounds alternating based on a sin wave
             self.normalise_to_circle(min=rBounds[0]+rangeFactor-t,max=rBounds[1]+rangeFactor-t)
             self.rotate_layer(np.deg2rad( (i/layers)*rotation))
@@ -210,7 +267,7 @@ class growth_sim():
                 particle.positionVec[2] = i*zInc
             
             self.layers.append(deepcopy(self.clump))
-            self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
+            self.draw_clump(showProgress=True, colour=self.colourMap(i/layers))
         
     def rotate_layer(self,radians=0):
         for i in range(len(self.polarClump[0])):
@@ -502,7 +559,8 @@ class growth_sim():
     
     def trim_vase(self,layersToTrim):
         self.layers = self.layers[layersToTrim:]
-        
+    
+  
     def convert_layers_to_mesh(self,meshTopBottom = False, showPlotly=False):
         # this is possibly THE WORST way to do this.
         # i have no 3d modelling experience, so this is a brute force method of creating a mesh
