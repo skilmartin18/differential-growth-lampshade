@@ -232,7 +232,20 @@ class growth_sim():
             self.draw_clump(showProgress=True, colour=self.colourMap(i/len(self.layers)))
     
     def modulated_vase(self,layers = 20, layer = 0, rBounds = (80,160,15), period=1, showProgress=False, zInc = 1, taper: float | Callable = 0, rotation = 0):
-        
+        """generate a modulated vase- this is the core function for generating cool vases from clump perimeters. 
+
+        Args:
+            layers (int, optional): how many layers tall to make the vase. Defaults to 20.
+            layer (int, optional): which layer to use to create the vase. Defaults to 0.
+            rBounds (tuple, optional): for normalising the clump to a circle- tuple contains (minimum radius, maximum radius, mod)
+            where mod is the magnitude of the sinusoidal radius variations. Defaults to (80,160,15).
+            period (int, optional): period of sinusoidal variations. Defaults to 1.
+            showProgress (bool, optional): False wipes figure after each iteration. Defaults to False.
+            zInc (int, optional): Z-axis distance between layers. Defaults to 1.
+            taper (float | Callable, optional): float for linear per-iteration reduction in radius, else function to determine 
+            taper amount based on iteration. Defaults to 0.
+            rotation (int, optional): angular rotation (degrees) between consecutive vase layers. Defaults to 0.
+        """
         # two kinds of show progress, we want to retain each 2d plot but dont want 
         # to retain multiple vases
         if not showProgress:
@@ -267,22 +280,39 @@ class growth_sim():
                 particle.positionVec[2] = i*zInc
             
             self.layers.append(deepcopy(self.clump))
-            self.draw_clump(showProgress=True, colour=self.colourMap(i/layers))
+            self.draw_clump(showProgress=showProgress, colour=self.colourMap(i/layers))
         
-    def rotate_layer(self,radians=0):
+    def rotate_layer(self,radians: float = 0):
+        """rotate the current sims polar clump
+
+        Args:
+            radians (float, optional): radians to rotate by. Defaults to 0.
+        """
         for i in range(len(self.polarClump[0])):
             self.polarClump[0][i] = (self.polarClump[0][i]+radians)
    
     ### smoothing ###
     
-    def smooth_vase(self, smoothing_function, smoothingKwargs = {}):
-        
+    def smooth_vase(self, smoothing_function: Callable, smoothingKwargs = {}):
+        """apply smoothing to all layers of a vase
+
+        Args:
+            smoothing_function (Callable): some smoothing function
+            smoothingKwargs (dict, optional): kawrgs for smoothing. Defaults to {}.
+        """
         for layer in self.layers:
             self.clump = layer
             smoothing_function(**smoothingKwargs)
     
-    def run_vase_smoothing(self, iterations, smoothingFunction, smoothingKwargs = {}, displayIts = 10):
-        
+    def run_vase_smoothing(self, iterations: int, smoothingFunction: Callable, smoothingKwargs = {}, displayIts: int = 10):
+        """run multiple iterations of vase smoothin and display
+
+        Args:
+            iterations (int): how many iterations to smooth for
+            smoothingFunction (Callable): smoothing function
+            smoothingKwargs (dict, optional): smoothing kwargs. Defaults to {}.
+            displayIts (int, optional): draw vase every displayIts. Defaults to 10.
+        """
         log.info(f"running vase smoothing for {iterations} its")
         
         for i in range(iterations):
@@ -294,6 +324,8 @@ class growth_sim():
      
     
     def moving_average_smooth(self, **kwargs):
+        """smoothing function using an X point MA
+        """
         
         points = kwargs.get("points", 3)
         
@@ -316,7 +348,8 @@ class growth_sim():
             p.positionVec = smooth[i]
     
     def gaussian_smooth(self, **kwargs):
-        
+        """gaussian smooth using an X point gaussian dist.
+        """
         points = kwargs.get("points", 5)
         
         log.info(f'running gaussian smoothing kernel size of {points}')
@@ -345,15 +378,23 @@ class growth_sim():
             p.positionVec = smooth[i]
         
     
-    def run_clump_smoothing(self, iterations, smoothing_function, smoothingKwargs, displayIts = 10):
-        
+    def run_clump_smoothing(self, iterations: int, smoothing_function: Callable, smoothingKwargs = {}, displayIts = 10):
+        """run iteratons of smoothing on a clump
+
+        Args:
+            iterations (int): how many smoothing iterations to run  
+            smoothing_function (Callable): smoothing function
+            smoothingKwargs (dict, optional): smoothing kwargs. Defaults to {}.
+            displayIts (int, optional): unused lol. Defaults to 10.
+        """
         for i in range(iterations):
             log.info(f"running smoothing iteration {i}")
             smoothing_function(**smoothingKwargs)
             self.draw_clump()
 
     def convert_to_polar(self):
-        
+        """converts the current clump particles into polar representation (angle, mag)
+        """
         particlesPositions = []
         particlesPositions.append([particle.positionVec for particle in self.clump.particles])
         
@@ -372,13 +413,16 @@ class growth_sim():
         return [T,R]
     
     def convert_to_cartesian(self):
- 
+        """converts current polar clump into cartensian form
+        """
         x = self.polarClump[1] * np.cos(self.polarClump[0])
         y = self.polarClump[1] * np.sin(self.polarClump[0])
         return [x,y]
     
     def polar_update_clump(self):
-        
+        """uses convert_to_cartesian to convert current polar clump to cartesian 
+        andd overwrites current cartesian clump w it
+        """
         [x,y] = self.convert_to_cartesian()
         
         for i,particle in enumerate(self.clump.particles):
@@ -386,8 +430,14 @@ class growth_sim():
             particle.positionVec[0] = x[i]
             particle.positionVec[1] = y[i]
     
-    def normalise_to_circle(self, min = 80, max = 160):
-        
+    def normalise_to_circle(self, min: float = 80, max: float = 160):
+        """normalises the coordinates of the current polar clump to sit linearly between a new min and max 
+        bound. 
+
+        Args:
+            min (float, optional): minimum magnitude. Defaults to 80.
+            max (float, optional): maximum magnitude. Defaults to 160.
+        """
         # ingest the clump in POLAR format
         
         # we normalise the values to [0 1]
@@ -412,6 +462,8 @@ class growth_sim():
     
     
     def draw_polar(self):   
+        """draws figure from polar clump on a polar axis
+        """
         # figures for polar normalisation
         self.polarfig = plt.figure(figsize=(6, 6))
         self.polarax = self.polarfig.add_subplot(111, projection='polar') 
@@ -420,7 +472,8 @@ class growth_sim():
     ### utility ###
 
     def init_interactive_sim(self):
-        
+        """never used 
+        """
         # make room for sliders
         self.fig.subplots_adjust(left=0.25, bottom=0.25)
 
@@ -519,10 +572,17 @@ class growth_sim():
         self.mass_slider.on_changed(update)
         
     def show(self):
+        """show AND block
+        """
         plt.show(block=True)
     
-    def save_clump(self, path = None, filename = None):
-        
+    def save_clump(self, path: str = None, filename: str = None): 
+        """save the raw clump object and a png to a file
+
+        Args:
+            path (str, optional): path to saved file. Defaults to ./saves/{timestamp}/.
+            filename (str, optional): filename for saved file. Defaults to layers.pkl and preview.png.
+        """
         if path == None:
             now = datetime.now()
             timestamp_str = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -539,8 +599,16 @@ class growth_sim():
         
         log.info(f"sim saved to {path}")
         
-    def load_clump_from_layers(self, path, layer: str | int = 'last'):
-        
+    def load_clump_from_layers(self, path: str, layer: str | int = 'last') -> particle.clump:
+        """load a clump from a layers.pkl file
+
+        Args:
+            path (str): path to saved pickle
+            layer (str | int, optional): which layer to load as current clump. Defaults to 'last'.
+
+        Returns:
+            _type_: _description_
+        """
         with open(path, 'rb') as handle:
             layers = pickle.load(handle)
             
