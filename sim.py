@@ -600,14 +600,14 @@ class growth_sim():
         log.info(f"sim saved to {path}")
         
     def load_clump_from_layers(self, path: str, layer: str | int = 'last') -> particle.clump:
-        """load a clump from a layers.pkl file
+        """loads a clump from a layer file 
 
         Args:
-            path (str): path to saved pickle
-            layer (str | int, optional): which layer to load as current clump. Defaults to 'last'.
+            path (str): path to layers pkl
+            layer (str | int, optional): index of layer. Defaults to 'last'.
 
         Returns:
-            _type_: _description_
+            particle.clump: _description_
         """
         with open(path, 'rb') as handle:
             layers = pickle.load(handle)
@@ -625,11 +625,25 @@ class growth_sim():
         
         return layers[layer]
     
-    def trim_vase(self,layersToTrim):
+    def trim_vase(self,layersToTrim: int):
+        """trims a vase from a point until end of vase
+
+        Args:
+            layersToTrim (int): trims vase from this until end
+        """
         self.layers = self.layers[layersToTrim:]
     
   
     def convert_layers_to_mesh(self,meshTopBottom = False, showPlotly=False):
+        """converts a set of vase layers into a mesh and displays it in the browser
+
+        Args:
+            meshTopBottom (bool, optional): who knows. Defaults to False.
+            showPlotly (bool, optional): display output in browser. Defaults to False.
+
+        Returns:
+            o3d.geometry.TriangleMesh: mesh
+        """
         # this is possibly THE WORST way to do this.
         # i have no 3d modelling experience, so this is a brute force method of creating a mesh
         
@@ -726,7 +740,13 @@ class growth_sim():
         return mesh
     
     def export_mesh_stl(self, filename = 'out'):
+        """generate an stl from o3d mesh
+
+        Args:
+            filename (str, optional): filename to save as. Defaults to 'out'.
+        """
         o3d.io.write_triangle_mesh(f"{filename}.stl", self.mesh)
+        
 if __name__ == "__main__":
     
     
@@ -766,30 +786,13 @@ if __name__ == "__main__":
     # create sim using clump
     sim = growth_sim(cl, threeD=True, growingKwargs=growingParams, saveToFile=True)
     
-    # create sim using path to pickle
-    # sim = growth_sim("/home/skilmartin/code/differential-growth/saves/saves/example_save/layers.pkl", threeD=True, growingKwargs=growingParams)
-    
-    # simulate clump growth
-    # sim.grow_clump(ITERATIONS, showProgress=True)
-    
-    # simulate vase growth
-    # sim.grow_vase(ITERATIONS, layers=ITERATIONS,saveToFile=True)
-    
     # load clump from file
     sim.load_clump_from_layers("/home/skilmartin/code/differential-growth/saves/example_save/layers.pkl",layer=48)
     sim.run_vase_smoothing(10, sim.gaussian_smooth, smoothingKwargs={'points': 11}, displayIts=20)
-  
+    sim.trim_vase(180)
     sim.convert_layers_to_mesh(showPlotly=True)
     
-    # sim.convert_to_polar()
-    # sim.normalise_to_circle()
-    # sim.polar_update_clump()
-    # sim.draw_clump()
-    # # create vase using a single layer from previous sim
-    # sim.draw_vase_from_layer(layer=48)
-    # sim.run_vase_smoothing(20, sim.gaussian_smooth, smoothingKwargs={'points': 7}, displayIts=10)
-    # sim.draw_polar()
-    # sim.show()
+  
     
    
    
